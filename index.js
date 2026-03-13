@@ -13,6 +13,11 @@ if (!BOT_TOKEN || !USER_ID) {
   process.exit(1);
 }
 
+// Helper: Escape special characters for Telegram Markdown
+function escTg(text) {
+  return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
+}
+
 // Global browser instance for persistent connection
 let globalBrowser = null;
 
@@ -111,8 +116,8 @@ async function injectTextInstant(page, text) {
   }, text);
 }
 
-// Command: /status - Take a screenshot of the IDE
-bot.command('status', async (ctx) => {
+// Command: /status, /screenshot, /ss - Take a screenshot of the IDE
+bot.command(['status', 'screenshot', 'ss'], async (ctx) => {
   try {
     await ctx.sendChatAction('upload_photo'); // Show "Uploading photo..." action
     const { page } = await getAgentPage();
@@ -184,6 +189,171 @@ bot.command('clear', async (ctx) => {
   } catch (error) {
     console.error('/clear Error:', error);
     ctx.reply(`❌ Error clearing input: ${error.message}`);
+  }
+});
+
+// Command: /approve - Quick approve/allow the current permission request
+bot.command('approve', async (ctx) => {
+  try {
+    await ctx.sendChatAction('typing');
+    const { page } = await getAgentPage();
+    if (!page) return ctx.reply('❌ Could not find the IDE page.');
+
+    const result = await page.evaluate(() => {
+      const allBtns = Array.from(document.querySelectorAll('button'));
+      const priorities = ['always run', 'always allow', 'approve', 'allow', 'run command', 'confirm', 'yes', 'accept all', 'accept'];
+      for (const keyword of priorities) {
+        const btn = allBtns.find(b => b.textContent.trim().toLowerCase() === keyword && b.offsetWidth > 0);
+        if (btn) { btn.click(); return btn.textContent.trim(); }
+      }
+      return null;
+    });
+
+    if (result) {
+      await ctx.reply(`✅ Clicked "${result}" in IDE.`);
+    } else {
+      await ctx.reply('⚠️ No permission request found to approve.');
+    }
+  } catch (error) {
+    console.error('/approve Error:', error);
+    ctx.reply(`❌ Error: ${error.message}`);
+  }
+});
+
+// Command: /reject - Reject/deny the current permission request
+bot.command('reject', async (ctx) => {
+  try {
+    await ctx.sendChatAction('typing');
+    const { page } = await getAgentPage();
+    if (!page) return ctx.reply('❌ Could not find the IDE page.');
+
+    const result = await page.evaluate(() => {
+      const allBtns = Array.from(document.querySelectorAll('button'));
+      const priorities = ['reject', 'deny', 'disallow', 'reject all', 'cancel'];
+      for (const keyword of priorities) {
+        const btn = allBtns.find(b => b.textContent.trim().toLowerCase() === keyword && b.offsetWidth > 0);
+        if (btn) { btn.click(); return btn.textContent.trim(); }
+      }
+      return null;
+    });
+
+    if (result) {
+      await ctx.reply(`🚫 Clicked "${result}" in IDE.`);
+    } else {
+      await ctx.reply('⚠️ No permission request found to reject.');
+    }
+  } catch (error) {
+    console.error('/reject Error:', error);
+    ctx.reply(`❌ Error: ${error.message}`);
+  }
+});
+
+// Callback: Handle inline keyboard button presses for permission actions
+bot.on('callback_query', async (ctx) => {
+  try {
+    const action = ctx.callbackQuery.data;
+    
+    // Handle permission actions
+    if (action && action.startsWith('perm:')) {
+      const buttonText = action.replace('perm:', '');
+      const { page } = await getAgentPage();
+      if (!page) { await ctx.answerCbQuery('❌ IDE not connected'); return; }
+
+      const result = await page.evaluate((targetText) => {
+        const allBtns = Array.from(document.querySelectorAll('button'));
+        const btn = allBtns.find(b => 
+          b.textContent.trim().toLowerCase() === targetText.toLowerCase() && b.offsetWidth > 0
+        );
+        if (btn) { btn.click(); return true; }
+        return false;
+      }, buttonText);
+
+      if (result) {
+        await ctx.answerCbQuery(`✅ "${buttonText}" clicked!`);
+        try { await ctx.editMessageText(ctx.callbackQuery.message.text + `\n\n✅ Action taken: "${buttonText}"`); } catch(e) {}
+      } else {
+        await ctx.answerCbQuery(`⚠️ Button "${buttonText}" no longer available`);
+      }
+    }
+    
+    // Handle file change actions
+    if (action && action.startsWith('fileaction:')) {
+      const fileAction = action.replace('fileaction:', '');
+      const { page } = await getAgentPage();
+      if (!page) { await ctx.answerCbQuery('❌ IDE not connected'); return; }
+
+      const result = await page.evaluate((act) => {
+        const allBtns = Array.from(document.querySelectorAll('button'));
+        if (act === 'accept') {
+          const btn = allBtns.find(b => b.className.includes('keep-changes') && b.offsetWidth > 0);
+          if (btn) { btn.click(); return 'Accept Changes'; }
+        } else if (act === 'reject') {
+          const btn = allBtns.find(b => b.className.includes('discard-changes') && b.offsetWidth > 0);
+          if (btn) { btn.click(); return 'Reject Changes'; }
+        }
+        return null;
+      }, fileAction);
+
+      if (result) {
+        await ctx.answerCbQuery(`✅ ${result}!`);
+        try { await ctx.editMessageText(ctx.callbackQuery.message.text + `\n\n✅ ${result}`); } catch(e) {}
+      } else {
+        await ctx.answerCbQuery('⚠️ No file changes pending');
+      }
+    }
+  } catch (error) {
+    console.error('Callback query error:', error);
+    await ctx.answerCbQuery('❌ Error processing action').catch(() => {});
+  }
+});
+
+// Command: /accept - Accept pending file changes
+bot.command('accept', async (ctx) => {
+  try {
+    await ctx.sendChatAction('typing');
+    const { page } = await getAgentPage();
+    if (!page) return ctx.reply('❌ Could not find the IDE page.');
+
+    const result = await page.evaluate(() => {
+      const allBtns = Array.from(document.querySelectorAll('button'));
+      const btn = allBtns.find(b => b.className.includes('keep-changes') && b.offsetWidth > 0);
+      if (btn) { btn.click(); return true; }
+      return false;
+    });
+
+    if (result) {
+      await ctx.reply('✅ File changes accepted!');
+    } else {
+      await ctx.reply('⚠️ No pending file changes to accept.');
+    }
+  } catch (error) {
+    console.error('/accept Error:', error);
+    ctx.reply(`❌ Error: ${error.message}`);
+  }
+});
+
+// Command: /rejectchanges - Reject pending file changes
+bot.command('rejectchanges', async (ctx) => {
+  try {
+    await ctx.sendChatAction('typing');
+    const { page } = await getAgentPage();
+    if (!page) return ctx.reply('❌ Could not find the IDE page.');
+
+    const result = await page.evaluate(() => {
+      const allBtns = Array.from(document.querySelectorAll('button'));
+      const btn = allBtns.find(b => b.className.includes('discard-changes') && b.offsetWidth > 0);
+      if (btn) { btn.click(); return true; }
+      return false;
+    });
+
+    if (result) {
+      await ctx.reply('🚫 File changes rejected!');
+    } else {
+      await ctx.reply('⚠️ No pending file changes to reject.');
+    }
+  } catch (error) {
+    console.error('/rejectchanges Error:', error);
+    ctx.reply(`❌ Error: ${error.message}`);
   }
 });
 
@@ -305,21 +475,248 @@ bot.on('text', async (ctx) => {
         }
     }
 
-    // 3. Let user know it was sent, then take a confirmation screenshot
-    const statusMsg = await ctx.reply('🚀 Vibe sent! Capturing agent response...');
+    // 3. Monitor execution & stream live updates to Telegram
+    const statusMsg = await ctx.reply('🚀 Prompt sent! Waiting for agent to start...');
     
-    await ctx.sendChatAction('upload_photo');
-    // Wait for the UI / AI to start generating response before taking screenshot
-    await new Promise(resolve => setTimeout(resolve, 2000)); 
+    (async () => {
+      try {
+        // Helper: check if IDE is still generating
+        const isStillGenerating = async () => {
+          return await page.evaluate(() => {
+            return !!document.querySelector('[data-tooltip-id*="input-send-button-cancel" i]') || 
+                   !!document.querySelector('[aria-label*="stop generation" i]') ||
+                   (document.querySelector('[data-tooltip-id*="input-send-button" i]')?.outerHTML.includes('bg-red-500'));
+          });
+        };
 
-    const screenshotBuffer = await page.screenshot({ type: 'png' });
-    
-    // Delete the intermediate "Capturing..." message and send the image
-    try {
-      await ctx.telegram.deleteMessage(ctx.chat.id, statusMsg.message_id);
-    } catch (e) { /* Ignore delete errors */ }
+        // Helper: extract the latest agent steps from the DOM
+        const getAgentSteps = async () => {
+          return await page.evaluate(() => {
+            // Find the last "flex flex-col space-y-2" which holds the current turn's steps
+            const stepContainers = document.querySelectorAll('.flex.flex-col.space-y-2');
+            const lastContainer = stepContainers[stepContainers.length - 1];
+            if (!lastContainer) return [];
 
-    await ctx.replyWithPhoto({ source: screenshotBuffer, filename: 'response.png' });
+            const steps = [];
+            for (const child of lastContainer.children) {
+              const text = child.textContent.trim().replace(/\s+/g, ' ');
+              if (!text) continue;
+
+              // Parse step type from the text
+              let stepText = '';
+              if (text.startsWith('Thought for')) {
+                stepText = '🧠 ' + text.split('/*')[0].trim(); // e.g. "Thought for 5s"
+              } else if (text.startsWith('Edited')) {
+                const fileName = text.replace('Edited', '').split('+')[0].trim();
+                stepText = '✏️ Edited ' + fileName;
+              } else if (text.startsWith('Created')) {
+                const fileName = text.replace('Created', '').split('+')[0].trim();
+                stepText = '📄 Created ' + fileName;
+              } else if (text.startsWith('Running command')) {
+                const cmdMatch = text.match(/\$\s*(.+?)(?:\.xterm|$)/);
+                const cmd = cmdMatch ? cmdMatch[1].trim().substring(0, 80) : '';
+                stepText = '⚡ Running: ' + (cmd || 'command...');
+              } else if (text.startsWith('Ran command')) {
+                const cmdMatch = text.match(/\$\s*(.+?)(?:\.xterm|$)/);
+                const cmd = cmdMatch ? cmdMatch[1].trim().substring(0, 80) : '';
+                const exitMatch = text.match(/Exit code (\d+)/);
+                const exitCode = exitMatch ? exitMatch[1] : '?';
+                stepText = (exitCode === '0' ? '✅' : '❌') + ' Ran: ' + (cmd || 'command') + ` (exit ${exitCode})`;
+              } else if (text.startsWith('Running background')) {
+                const cmdMatch = text.match(/\$\s*(.+?)(?:\.xterm|$)/);
+                const cmd = cmdMatch ? cmdMatch[1].trim().substring(0, 80) : '';
+                stepText = '🔄 Background: ' + (cmd || 'command...');
+              } else if (text.startsWith('Searching') || text.startsWith('Reading') || text.startsWith('Viewing')) {
+                stepText = '🔍 ' + text.substring(0, 100);
+              } else if (text.length < 150) {
+                stepText = '📋 ' + text.substring(0, 100);
+              } else {
+                continue; // Skip long blocks (markdown content, etc.)
+              }
+              steps.push(stepText);
+            }
+            return steps;
+          });
+        };
+
+        // Wait for generation to start (up to 7.5s)
+        let tries = 0;
+        let didStartGenerating = false;
+        while (tries < 30) {
+          await new Promise(r => setTimeout(r, 250));
+          if (await isStillGenerating()) {
+            didStartGenerating = true;
+            break;
+          }
+          tries++;
+        }
+
+        if (!didStartGenerating) {
+          // Fallback: maybe it was too fast
+          await new Promise(r => setTimeout(r, 2000));
+          try {
+            await ctx.telegram.editMessageText(
+              ctx.chat.id, statusMsg.message_id, null,
+              '✅ Prompt execution complete!'
+            );
+          } catch (e) { /* Ignore */ }
+          return;
+        }
+
+        // Now stream live updates while generating
+        let lastUpdateText = '';
+        let stepCount = 0;
+        
+        while (true) {
+          await new Promise(r => setTimeout(r, 1500)); // Poll every 1.5s
+          
+          const generating = await isStillGenerating().catch(() => false);
+          const steps = await getAgentSteps().catch(() => []);
+          
+          // Build the status message (plain text - no Markdown to avoid parse errors)
+          const header = generating ? '⏳ Agent is working...' : '✅ Execution complete!';
+          
+          // Only show last 15 steps to avoid message length issues
+          const displaySteps = steps.slice(-15);
+          const truncatedNote = steps.length > 15 ? `\n(${steps.length - 15} earlier steps hidden)\n` : '';
+          
+          const fullText = header + truncatedNote + 
+            (displaySteps.length > 0
+              ? '\n\n' + displaySteps.map((s, i) => `${i + 1}. ${s}`).join('\n')
+              : '');
+          
+          // Only update if text changed
+          if (fullText !== lastUpdateText) {
+            try {
+              await ctx.telegram.editMessageText(
+                ctx.chat.id, statusMsg.message_id, null,
+                fullText
+              );
+              lastUpdateText = fullText;
+            } catch (e) {
+              if (!e.message?.includes('message is not modified')) {
+                console.error('Edit message error:', e.message);
+              }
+            }
+          }
+          
+          if (!generating) break;
+          stepCount++;
+          
+          // Safety: timeout after 10 minutes
+          if (stepCount > 400) {
+            try {
+              await ctx.telegram.editMessageText(
+                ctx.chat.id, statusMsg.message_id, null,
+                '⚠️ Execution timed out after 10 minutes.\nUse /ss to see current state.'
+              );
+            } catch(e) {}
+            break;
+          }
+        }
+
+        // After generation completes, extract and send the agent's response
+        await new Promise(r => setTimeout(r, 1000)); // Wait for final render
+        
+        try {
+          const responseText = await page.evaluate(() => {
+            // Find the last step container
+            const stepContainers = document.querySelectorAll('.flex.flex-col.space-y-2');
+            if (!stepContainers.length) return '';
+            const lastContainer = stepContainers[stepContainers.length - 1];
+            
+            const steps = Array.from(lastContainer.children);
+            
+            // Walk backwards to find the response step
+            // Response steps contain <p> tags and are NOT thinking blocks
+            let responseStep = null;
+            for (let i = steps.length - 1; i >= 0; i--) {
+              const step = steps[i];
+              const rawText = step.textContent.trim();
+              
+              // Skip thinking blocks
+              if (rawText.startsWith('Thought for')) continue;
+              
+              // Must have paragraphs
+              const hasParagraphs = step.querySelectorAll('p').length > 0;
+              if (!hasParagraphs) continue;
+
+              // Skip if only .animate-markdown (internal thinking rendered after thought button)
+              const animateBlocks = step.querySelectorAll('.animate-markdown');
+              if (animateBlocks.length > 0 && step.querySelectorAll('p').length <= animateBlocks.length) continue;
+              
+              responseStep = step;
+              break;
+            }
+            
+            if (!responseStep) return '';
+            
+            // Extract structured text from the response
+            const elements = responseStep.querySelectorAll('p, h1, h2, h3, h4, li, pre, blockquote');
+            const texts = [];
+            const seen = new Set();
+            
+            for (const el of elements) {
+              let text = el.textContent.trim();
+              if (!text || seen.has(text)) continue;
+              seen.add(text);
+              
+              // Skip leaked CSS content from style blocks
+              if (text.includes('prefers-color-scheme') || text.includes('.markdown-alert')) continue;
+              
+              switch(el.tagName) {
+                case 'H1': text = '# ' + text; break;
+                case 'H2': text = '## ' + text; break;
+                case 'H3': text = '### ' + text; break;
+                case 'H4': text = '#### ' + text; break;
+                case 'LI': text = '• ' + text; break;
+                case 'PRE': text = '```\n' + text + '\n```'; break;
+                case 'BLOCKQUOTE': text = '> ' + text; break;
+              }
+              texts.push(text);
+            }
+            
+            return texts.join('\n\n');
+          });
+
+          if (responseText && responseText.length > 10) {
+            // Telegram message limit is 4096 chars, split if needed
+            const MAX_LEN = 4000;
+            const header = '📝 Agent Response:\n\n';
+            
+            if (responseText.length <= MAX_LEN - header.length) {
+              await ctx.reply(header + responseText);
+            } else {
+              // Split into chunks
+              const chunks = [];
+              let remaining = responseText;
+              while (remaining.length > 0) {
+                if (remaining.length <= MAX_LEN) {
+                  chunks.push(remaining);
+                  break;
+                }
+                // Find a good split point (newline near the limit)
+                let splitAt = remaining.lastIndexOf('\n', MAX_LEN);
+                if (splitAt < MAX_LEN * 0.5) splitAt = MAX_LEN;
+                chunks.push(remaining.substring(0, splitAt));
+                remaining = remaining.substring(splitAt).trim();
+              }
+              
+              for (let i = 0; i < chunks.length; i++) {
+                const chunkHeader = i === 0 ? header : `(continued ${i + 1}/${chunks.length})\n\n`;
+                await ctx.reply(chunkHeader + chunks[i]);
+                if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 500));
+              }
+            }
+          }
+        } catch (extractErr) {
+          console.error('Response extraction error:', extractErr.message);
+        }
+        
+      } catch (err) {
+        console.error('Background generation monitor error:', err);
+      }
+    })();
 
   } catch (error) {
     console.error('Text handler Error:', error);
@@ -328,8 +725,9 @@ bot.on('text', async (ctx) => {
 });
 
 // --- Background Agent Monitor ---
-let lastSeenPermissionBtns = [];
-let isGeneratingState = false;
+let lastSeenPermissionCount = 0;
+let lastPermissionMsgId = null;
+let lastFileChangeMsgId = null;
 
 function startBackgroundMonitor() {
   setInterval(async () => {
@@ -340,51 +738,131 @@ function startBackgroundMonitor() {
       if (!page) return;
 
       const state = await page.evaluate(() => {
-          // Find buttons by their exact text content
           const allBtns = Array.from(document.querySelectorAll('button'));
+          const permKeywords = ['approve', 'run command', 'allow', 'always run', 'always allow',
+                                'confirm', 'yes', 'accept', 'accept all',
+                                'reject', 'deny', 'disallow', 'reject all'];
           
-          // An explicit "Cancel" text button usually means it is currently running an action/generating
-          const cancelBtn = allBtns.find(b => b.textContent.trim().toLowerCase() === 'cancel');
-          
-          const isGenerating = !!cancelBtn;
-          
-          // Look for permission buttons visually
           const permissionBtns = allBtns.filter(b => {
               const text = b.textContent.trim().toLowerCase();
-              return ['approve', 'run command', 'allow', 'review changes', 'always run', 'confirm', 'yes'].includes(text);
+              return permKeywords.includes(text) && b.offsetWidth > 0 && b.offsetHeight > 0;
           }).map(b => b.textContent.trim());
 
-          return { isGenerating, permissionBtns };
+          // Get context: what command is requesting permission?
+          let context = '';
+          const lastPermBtn = allBtns.filter(b => {
+            const text = b.textContent.trim().toLowerCase();
+            return ['always run', 'approve', 'allow', 'run command'].includes(text) && b.offsetWidth > 0;
+          }).pop();
+          
+          if (lastPermBtn) {
+            let parent = lastPermBtn.parentElement;
+            for (let i = 0; i < 5 && parent; i++) {
+              const text = parent.textContent.trim().replace(/\s+/g, ' ');
+              if (text.length > 30 && text.length < 500) {
+                const cmdMatch = text.match(/\$\s*(.+?)(?:\.xterm|Always|Relocate|$)/);
+                if (cmdMatch) context = cmdMatch[1].trim().substring(0, 100);
+                break;
+              }
+              parent = parent.parentElement;
+            }
+          }
+
+          return { permissionBtns: [...new Set(permissionBtns)], context };
       });
 
-      // Detect state transitions for execution
-      if (isGeneratingState && !state.isGenerating) {
-          isGeneratingState = false;
-          const screenshotBuffer = await page.screenshot({ type: 'png' });
-          await bot.telegram.sendPhoto(
-            USER_ID, 
-            { source: screenshotBuffer, filename: 'done.png' }, 
-            { caption: '✅ Execution finished!' }
-          ).catch(e => console.log('Monitor screenshot error:', e.message));
-      } else if (!isGeneratingState && state.isGenerating) {
-          isGeneratingState = true;
-      }
-
-      // Check for new permission requests
-      for (const btnText of state.permissionBtns) {
-          if (!lastSeenPermissionBtns.includes(btnText)) {
-              await bot.telegram.sendMessage(
-                 USER_ID, 
-                 `⚠️ Agent is requesting action: "${btnText}"\nUse /status to see the screen.`
-              ).catch(e => console.error("Monitor msg error:", e.message));
+      // Send inline keyboard when new permission buttons appear
+      if (state.permissionBtns.length > 0 && state.permissionBtns.length !== lastSeenPermissionCount) {
+        const keyboard = [];
+        const row1 = [];
+        const row2 = [];
+        
+        for (const btnText of state.permissionBtns) {
+          const lower = btnText.toLowerCase();
+          let emoji = '🔘';
+          if (['approve', 'allow', 'yes', 'confirm', 'accept', 'accept all'].includes(lower)) emoji = '✅';
+          else if (['always run', 'always allow'].includes(lower)) emoji = '🔁';
+          else if (['run command'].includes(lower)) emoji = '▶️';
+          else if (['reject', 'deny', 'disallow', 'reject all', 'cancel'].includes(lower)) emoji = '❌';
+          
+          const button = { text: `${emoji} ${btnText}`, callback_data: `perm:${btnText}` };
+          if (['reject', 'deny', 'disallow', 'reject all', 'cancel'].includes(lower)) {
+            row2.push(button);
+          } else {
+            row1.push(button);
           }
+        }
+        
+        if (row1.length > 0) keyboard.push(row1);
+        if (row2.length > 0) keyboard.push(row2);
+        
+        const contextMsg = state.context ? `\nCommand: ${state.context}` : '';
+        
+        if (lastPermissionMsgId) {
+          try { await bot.telegram.deleteMessage(USER_ID, lastPermissionMsgId); } catch(e) {}
+        }
+        
+        try {
+          const msg = await bot.telegram.sendMessage(
+            USER_ID,
+            `⚠️ Agent is requesting permission:${contextMsg}\n\nChoose an action:`,
+            { reply_markup: { inline_keyboard: keyboard } }
+          );
+          lastPermissionMsgId = msg.message_id;
+        } catch (e) {
+          console.error('Monitor msg error:', e.message);
+        }
       }
-      lastSeenPermissionBtns = state.permissionBtns;
+      
+      if (state.permissionBtns.length === 0 && lastSeenPermissionCount > 0) {
+        lastPermissionMsgId = null;
+      }
+      lastSeenPermissionCount = state.permissionBtns.length;
+
+      // --- File Changes Detection ---
+      const fileState = await page.evaluate(() => {
+        const allBtns = Array.from(document.querySelectorAll('button'));
+        const hasAccept = allBtns.some(b => b.className.includes('keep-changes') && b.offsetWidth > 0);
+        const hasReject = allBtns.some(b => b.className.includes('discard-changes') && b.offsetWidth > 0);
+        
+        // Try to get edited file info
+        let fileInfo = '';
+        const editedFilesEl = document.querySelector('[class*="pointer-events-auto"]');
+        if (editedFilesEl) {
+          const text = editedFilesEl.textContent.trim().replace(/\s+/g, ' ');
+          if (text.includes('.js') || text.includes('.ts') || text.includes('.py') || text.includes('.') ) {
+            fileInfo = text.substring(0, 200);
+          }
+        }
+        
+        return { hasFileChanges: hasAccept || hasReject, hasAccept, hasReject, fileInfo };
+      }).catch(() => ({ hasFileChanges: false }));
+
+      if (fileState.hasFileChanges && !lastFileChangeMsgId) {
+        const keyboard = [];
+        const row = [];
+        if (fileState.hasAccept) row.push({ text: '✅ Accept Changes', callback_data: 'fileaction:accept' });
+        if (fileState.hasReject) row.push({ text: '❌ Reject Changes', callback_data: 'fileaction:reject' });
+        if (row.length > 0) keyboard.push(row);
+        
+        try {
+          const msg = await bot.telegram.sendMessage(
+            USER_ID,
+            `📝 File changes pending review:\n${fileState.fileInfo ? fileState.fileInfo : 'Use /ss to see details.'}\n\nChoose an action:`,
+            { reply_markup: { inline_keyboard: keyboard } }
+          );
+          lastFileChangeMsgId = msg.message_id;
+        } catch (e) {
+          console.error('File change msg error:', e.message);
+        }
+      } else if (!fileState.hasFileChanges && lastFileChangeMsgId) {
+        lastFileChangeMsgId = null;
+      }
 
     } catch (e) {
-      // Ignore background errors (like context destroyed on reload)
+      // Ignore background errors
     }
-  }, 2500); // Check every 2.5 seconds
+  }, 2500);
 }
 
 // Start bot

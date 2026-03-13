@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "\"/Applications/Antigravity.app/Contents/MacOS/Electron\" --remote-debugging-port=9222 --remote-allow-origins=\"*\" --remote-debugging-address=0.0.0.0 & node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
