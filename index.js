@@ -1,4 +1,53 @@
 require('dotenv').config();
+// Polyfill global fetch for older Node.js versions (puppeteer may call globalThis.fetch)
+if (typeof globalThis.fetch !== 'function') {
+  const http = require('http');
+  const https = require('https');
+  const { URL } = require('url');
+
+  globalThis.fetch = function fetch(url, options = {}) {
+    return new Promise((resolve, reject) => {
+      try {
+        const u = new URL(url);
+        const lib = u.protocol === 'https:' ? https : http;
+        const req = lib.request(
+          {
+            hostname: u.hostname,
+            port: u.port || (u.protocol === 'https:' ? 443 : 80),
+            path: `${u.pathname}${u.search}`,
+            method: options.method || 'GET',
+            headers: options.headers || {}
+          },
+          (res) => {
+            let data = '';
+            res.setEncoding('utf8');
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+              resolve({
+                ok: res.statusCode >= 200 && res.statusCode < 300,
+                status: res.statusCode,
+                statusText: res.statusMessage,
+                text: () => Promise.resolve(data),
+                json: () => {
+                  try { return Promise.resolve(JSON.parse(data)); } catch (e) { return Promise.reject(e); }
+                },
+                headers: {
+                  get: (name) => res.headers[name.toLowerCase()]
+                }
+              });
+            });
+          }
+        );
+
+        req.on('error', reject);
+        if (options.body) req.write(options.body);
+        req.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+}
 const { Telegraf } = require('telegraf');
 const puppeteer = require('puppeteer-core');
 
