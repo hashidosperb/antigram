@@ -5,11 +5,11 @@ const puppeteer = require('puppeteer-core');
 // Constants
 const CDP_PORT = process.env.CDP_PORT || '9222';
 const CDP_URL = `http://127.0.0.1:${CDP_PORT}`;
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const USER_ID = process.env.USER_ID;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_USER_ID = process.env.TELEGRAM_USER_ID;
 
-if (!BOT_TOKEN || !USER_ID) {
-  console.error('Error: Provide BOT_TOKEN and USER_ID in .env file');
+if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_USER_ID) {
+  console.error('Error: Provide TELEGRAM_BOT_TOKEN and TELEGRAM_USER_ID in .env file');
   process.exit(1);
 }
 
@@ -22,11 +22,11 @@ function escTg(text) {
 let globalBrowser = null;
 
 // Initialize Telegram Bot
-const bot = new Telegraf(BOT_TOKEN);
+const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
 
-// Middleware to check specific USER_ID for security
+// Middleware to check specific TELEGRAM_USER_ID for security
 bot.use((ctx, next) => {
-  if (ctx.from && ctx.from.id.toString() === USER_ID.toString()) {
+  if (ctx.from && ctx.from.id.toString() === TELEGRAM_USER_ID.toString()) {
     return next();
   } else {
     console.log(`Unauthorized access attempt by user: ${ctx.from ? ctx.from.id : 'unknown'}`);
@@ -799,12 +799,12 @@ function startBackgroundMonitor() {
         const contextMsg = state.context ? `\nCommand: ${state.context}` : '';
         
         if (lastPermissionMsgId) {
-          try { await bot.telegram.deleteMessage(USER_ID, lastPermissionMsgId); } catch(e) {}
+          try { await bot.telegram.deleteMessage(TELEGRAM_USER_ID, lastPermissionMsgId); } catch(e) {}
         }
         
         try {
           const msg = await bot.telegram.sendMessage(
-            USER_ID,
+            TELEGRAM_USER_ID,
             `⚠️ Agent is requesting permission:${contextMsg}\n\nChoose an action:`,
             { reply_markup: { inline_keyboard: keyboard } }
           );
@@ -847,7 +847,7 @@ function startBackgroundMonitor() {
         
         try {
           const msg = await bot.telegram.sendMessage(
-            USER_ID,
+            TELEGRAM_USER_ID,
             `📝 File changes pending review:\n${fileState.fileInfo ? fileState.fileInfo : 'Use /ss to see details.'}\n\nChoose an action:`,
             { reply_markup: { inline_keyboard: keyboard } }
           );
