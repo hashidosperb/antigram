@@ -6,9 +6,9 @@
   "scripts": {
     "setup": "node setup.js",
     "setup:reconfigure": "node setup.js --reconfigure",
-    "start": "CHROME_PATH=${CHROME_PATH:-/usr/bin/google-chrome} \"${CHROME_PATH}\" --remote-debugging-port=9222 --remote-allow-origins='*' --remote-debugging-address=0.0.0.0 --no-sandbox & node index.js",
+    "start": "export CHROME_PATH=\"${CHROME_PATH:-/usr/bin/google-chrome}\"; \"$CHROME_PATH\" --remote-debugging-port=9222 --remote-allow-origins='*' --remote-debugging-address=0.0.0.0 --no-sandbox & node index.js",
     "start:mac": "\"/Applications/Antigravity.app/Contents/MacOS/Electron\" --remote-debugging-port=9222 --remote-allow-origins=\"*\" --remote-debugging-address=0.0.0.0 & node index.js",
-    "start:linux": "ANTIGRAVITY_PATH=${ANTIGRAVITY_PATH:-/usr/bin/antigravity} \"${ANTIGRAVITY_PATH}\" --remote-debugging-port=9222 --remote-allow-origins='*' --remote-debugging-address=0.0.0.0 --no-sandbox & node index.js",
+    "start:linux": "export ANTIGRAVITY_PATH=\"${ANTIGRAVITY_PATH:-/usr/bin/antigravity}\"; \"$ANTIGRAVITY_PATH\" --remote-debugging-port=9222 --remote-allow-origins='*' --remote-debugging-address=0.0.0.0 --no-sandbox & node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
