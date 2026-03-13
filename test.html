@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Bot Test Page</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f2f5;
+            margin: 0;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 {
+            color: #2b5278; /* Telegram blue */
+            margin-top: 0;
+        }
+        p {
+            line-height: 1.6;
+            color: #555;
+        }
+        button {
+            background-color: #2b5278;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin-top: 20px;
+        }
+        button:hover {
+            background-color: #1a3652;
+        }
+        .status {
+            margin-top: 15px;
+            font-weight: bold;
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bot Test Environment 🤖</h1>
+        <p>This is a sample HTML file created to test the Antigram bot's file reading and listing capabilities.</p>
+        <p>If you requested to read this file via Telegram using <code>/read test.html</code>, you should see this exact code rendered in your chat!</p>
+        <button id="testBtn">Click to Test Interaction</button>
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        document.getElementById('testBtn').addEventListener('click', function() {
+            document.getElementById('status').innerText = 'Interaction successful! 🎉';
+            setTimeout(() => {
+                document.getElementById('status').innerText = '';
+            }, 3000);
+        });
+    </script>
+</body>
+</html>
