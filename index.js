@@ -1010,10 +1010,10 @@ async function handleAgentPrompt(ctx, messageText) {
 
             const steps = Array.from(lastContainer.children);
 
-            // Walk backwards to find the response step
+            // Find all response steps
             // Response steps contain <p> tags and are NOT thinking blocks
-            let responseStep = null;
-            for (let i = steps.length - 1; i >= 0; i--) {
+            const responseSteps = [];
+            for (let i = 0; i < steps.length; i++) {
               const step = steps[i];
               const rawText = step.textContent.trim();
 
@@ -1028,35 +1028,36 @@ async function handleAgentPrompt(ctx, messageText) {
               const animateBlocks = step.querySelectorAll('.animate-markdown');
               if (animateBlocks.length > 0 && step.querySelectorAll('p').length <= animateBlocks.length) continue;
 
-              responseStep = step;
-              break;
+              responseSteps.push(step);
             }
 
-            if (!responseStep) return '';
+            if (responseSteps.length === 0) return '';
 
-            // Extract structured text from the response
-            const elements = responseStep.querySelectorAll('p, h1, h2, h3, h4, li, pre, blockquote');
+            // Extract structured text from all the responses
             const texts = [];
             const seen = new Set();
 
-            for (const el of elements) {
-              let text = el.textContent.trim();
-              if (!text || seen.has(text)) continue;
-              seen.add(text);
+            for (const step of responseSteps) {
+              const elements = step.querySelectorAll('p, h1, h2, h3, h4, li, pre, blockquote');
+              for (const el of elements) {
+                let text = el.textContent.trim();
+                if (!text || seen.has(text)) continue;
+                seen.add(text);
 
-              // Skip leaked CSS content from style blocks
-              if (text.includes('prefers-color-scheme') || text.includes('.markdown-alert')) continue;
+                // Skip leaked CSS content from style blocks
+                if (text.includes('prefers-color-scheme') || text.includes('.markdown-alert')) continue;
 
-              switch (el.tagName) {
-                case 'H1': text = '# ' + text; break;
-                case 'H2': text = '## ' + text; break;
-                case 'H3': text = '### ' + text; break;
-                case 'H4': text = '#### ' + text; break;
-                case 'LI': text = '• ' + text; break;
-                case 'PRE': text = '```\n' + text + '\n```'; break;
-                case 'BLOCKQUOTE': text = '> ' + text; break;
+                switch (el.tagName) {
+                  case 'H1': text = '# ' + text; break;
+                  case 'H2': text = '## ' + text; break;
+                  case 'H3': text = '### ' + text; break;
+                  case 'H4': text = '#### ' + text; break;
+                  case 'LI': text = '• ' + text; break;
+                  case 'PRE': text = '```\n' + text + '\n```'; break;
+                  case 'BLOCKQUOTE': text = '> ' + text; break;
+                }
+                texts.push(text);
               }
-              texts.push(text);
             }
 
             return texts.join('\n\n');
